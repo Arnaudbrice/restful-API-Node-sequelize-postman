@@ -1,4 +1,4 @@
-import { User, Note } from "../models/association.js";
+import { User, Note, UserNotes } from "../models/association.js";
 
 // POST /notes
 export const createNote = async (req, res) => {
@@ -16,20 +16,15 @@ export const createNote = async (req, res) => {
       res.status(400).json({ error: "title and content are required" });
       return;
     }
-    const note = await Note.create({
-      title,
-      content,
-      userId: user.id
+    // Bei n:n Beziehung erstellen wir erst die Notiz, dann den Eintrag in der Verknüpfungstabelle
+
+    const note = await Note.create({ title, content });
+    await UserNotes.create({
+      userId,
+      noteId: note.id
     });
-    res.status(201).json({
-      note,
-      User: {
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email
-      }
-    });
+
+    res.status(201).json(note);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -38,7 +33,7 @@ export const createNote = async (req, res) => {
 // GET /notes
 export const getAllNotes = async (req, res) => {
   try {
-    const notes = await Note.findAll();
+    const notes = await Note.findAll({ include: User });
     res.json(notes);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -89,6 +84,42 @@ export const updateNote = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+// PUT /notes/:noteId/users/:userId
+// Benutzer zu einer Notiz hinzuzufügen
+export const updateUserOfNote = async (req, res) => {
+  try {
+    const { noteId, userId } = req.params;
+
+    console.log("noteId", noteId);
+    // Überprüfen, ob die Zuordnung (userId, noteId) bereits besteht in der Assoziationstabelle UserNotes
+    const existingAssociation = await UserNotes.findOne({
+      where: { UserId: userId, NoteId: noteId }
+    });
+
+    // Check if the user is already associated with the note
+    if (existingAssociation) {
+      // we cannot have the same User 2 times associated with the same Note
+      res
+        .status(400)
+        .json({ error: "User is already associated with this note." });
+      return;
+    }
+
+    // Ein neues Eintrag in der Verknüpfungstabelle UserNotes erstellen ( ein User kann mindestens eine Notiz zugeordnet werden)
+    //! Diese Tabelle verwaltet die Many-to-Many-Beziehung zwischen den User- und Note-Modellen.
+
+    // Proceed to create the association if it doesn't exist
+    const association = await UserNotes.create({
+      UserId: userId,
+      NoteId: noteId
+    });
+    console.log(association);
+    // Ausgabe könnte sein: { userId: 1, noteId: 2, createdAt: ..., updatedAt: ... }
+    res.status(201).json(association); //201 because of create
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
 
 // DELETE /notes/:id
 export const deleteNote = async (req, res) => {
@@ -107,6 +138,32 @@ export const deleteNote = async (req, res) => {
       return;
     }
     res.status(204).json({ message: "Note deleted" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// !Note:Bei einer Many-to-Many-Beziehung zwischen zwei Entitäten ist eine Assoziationstabelle(Association Table hier UserNotes) erforderlich, um die Beziehung zwischen den Entitäten zu verwalten.
+// DELETE /notes/:noteId/users/:userId
+// delete a user from a note (without to delete the note itself)
+export const deleteUserOfNote = async (req, res) => {
+  try {
+    const { noteId, userId } = req.params;
+    const association = await UserNotes.findOne({
+      where: { UserId: userId, NoteId: noteId }
+    });
+    if (!association) {
+      res.status(404).json({ error: "User not associated with this note." });
+      return;
+    }
+    const rowCount = await UserNotes.destroy({
+      where: { UserId: userId, NoteId: noteId }
+    });
+    if (!rowCount) {
+      res.status(404).json({ error: "User not associated with this note." });
+      return;
+    }
+    res.status(204).json({ message: "User deleted" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

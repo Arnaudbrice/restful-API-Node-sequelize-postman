@@ -1,9 +1,10 @@
-import express from "express";
 import cors from "cors";
+import express from "express";
 import path from "path";
 
-import * as userController from "./controllers/userController.js";
-import * as noteController from "./controllers/noteController.js";
+import noteRouter from "./routes/noteRouter.js";
+import userRouter from "./routes/userRouter.js";
+
 const app = express();
 
 //express version greater than v4.16
@@ -28,27 +29,12 @@ app.get("/", async (req, res) => {
   }
 });
 
-app
-  .route("/users")
-  .get(userController.getAllUsers)
-  .post(userController.createUser);
-app
-  .route("/users/:id")
-  .get(userController.getUserById)
-  .put(userController.updateUser)
-  .delete(userController.deleteUser);
-
-app
-  .route("/notes")
-  .get(noteController.getAllNotes)
-  .post(noteController.createNote);
-app
-  .route("/notes/:id")
-  .get(noteController.getNoteById)
-  .put(noteController.updateNote)
-  .delete(noteController.deleteNote);
+// Use the userRouter router for all paths starting with /users
+app.use("/users", userRouter);
+// Use the noteRouter router for all paths starting with /notes
+app.use("/notes", noteRouter);
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log(`Server is listening on port port!`);
+  console.log(`Server is listening on port ${port}`);
 });
